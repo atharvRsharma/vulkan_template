@@ -29,6 +29,7 @@ class HelloTriangleApplication {
 public:
     void run() {
         initWindow();
+        getRequiredExtensions();
         initVulkan();
         mainLoop();
         cleanup();
@@ -46,6 +47,18 @@ private:
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "sug", nullptr, nullptr);
+    }
+
+    std::vector<const char*> getRequiredExtensions() {
+        uint32_t glfwExtensionCount = 0;
+        auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+        std::vector extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+        if (enableValidationLayers) {
+            extensions.push_back(vk::EXTDebugUtilsExtensionName);
+        }
+
+        return extensions;
     }
 
     void createInstance() {
@@ -71,25 +84,28 @@ private:
             throw std::runtime_error("atleast 1 req layers aint supported twin");
         }
 
-        uint32_t glfwExtensionCount = 0;
-        auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+        
+        auto requiredExtensions = getRequiredExtensions();
+        
+
 
         auto extensionProperties = context.enumerateInstanceExtensionProperties();
-        for (uint32_t i{}; i < glfwExtensionCount; ++i) {
+        for (auto const& requiredExtension : requiredExtensions)
+        {
             if (std::ranges::none_of(extensionProperties,
-                [glfwExtension = glfwExtensions[i]](auto const& extensionProperty) {
-                    return strcmp(extensionProperty.extensionName, glfwExtension) == 0;
-                }))
+                [requiredExtension](auto const& extensionProperty) { return strcmp(extensionProperty.extensionName, requiredExtension) == 0; }))
             {
-                throw std::runtime_error("required glfw extension not supported: " + std::string(glfwExtensions[i]));
+                throw std::runtime_error("Required extension not supported: " + std::string(requiredExtension));
             }
         }
 
 
         vk::InstanceCreateInfo createInfo{
             .pApplicationInfo = &appinfo,
-            .enabledExtensionCount = glfwExtensionCount,
-            .ppEnabledExtensionNames = glfwExtensions};
+            .enabledLayerCount = static_cast<uint32_t>(requiredLayers.size()),
+            .ppEnabledLayerNames = requiredLayers.data(),
+            .enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size()),
+            .ppEnabledExtensionNames = requiredExtensions.data()};
 
         instance = vk::raii::Instance(context, createInfo);
     }
