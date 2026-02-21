@@ -1,3 +1,7 @@
+#include <cstring>
+#include <cstdlib>
+#include <iostream>
+
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
 #else
@@ -29,7 +33,6 @@ class HelloTriangleApplication {
 public:
     void run() {
         initWindow();
-        getRequiredExtensions();
         initVulkan();
         mainLoop();
         cleanup();
@@ -37,8 +40,10 @@ public:
 
 private:
     GLFWwindow* window = nullptr;
+
     vk::raii::Context   context;
     vk::raii::Instance  instance = nullptr;
+    vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
 
     void initWindow() {
         glfwInit();
@@ -87,17 +92,17 @@ private:
         
         auto requiredExtensions = getRequiredExtensions();
         
-
-
         auto extensionProperties = context.enumerateInstanceExtensionProperties();
-        for (auto const& requiredExtension : requiredExtensions)
-        {
-            if (std::ranges::none_of(extensionProperties,
-                [requiredExtension](auto const& extensionProperty) { return strcmp(extensionProperty.extensionName, requiredExtension) == 0; }))
-            {
-                throw std::runtime_error("Required extension not supported: " + std::string(requiredExtension));
-            }
+        auto unsupportedPropertyIt =
+            std::ranges::find_if(requiredExtensions, [&extensionProperties](auto const& requiredExtension) {
+                return std::ranges::none_of(extensionProperties, [requiredExtension] (auto const& extensionProperty) {
+                    return strcmp(extensionProperty.extensionName, requiredExtension) == 0;
+                });
+                });
+        if (unsupportedPropertyIt != requiredExtensions.end()) {
+            throw std::runtime_error("Required extension not supported: " + std::string(*unsupportedPropertyIt));
         }
+      
 
 
         vk::InstanceCreateInfo createInfo{
@@ -112,6 +117,25 @@ private:
 
     void initVulkan() {
         createInstance();
+        setupDebugMessenger();
+    }
+
+    void setupDebugMessenger() {
+        if (!enableValidationLayers) return;
+
+        vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
+
+        vk::DebugUtilsMessageTypeFlagsEXT messageTypeFlags(vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+            vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
+
+        vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{ .messageSeverity  = severityFlags,
+                                                                               .messageType      = messageTypeFlags,
+                                                                                .pfnUserCallback = &debugCallback};
+
+        debugMessenger = instance.createDebugUtilsMessengerEXT( debugUtilsMessengerCreateInfoEXT );
+
     }
 
     void mainLoop() {
@@ -119,6 +143,14 @@ private:
             glfwPollEvents();
         }
 
+    }
+
+    static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT      severity,
+        vk::DebugUtilsMessageTypeFlagsEXT             type,
+        const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
+        void* pUderData) {
+
+        std::cerr << "validation layer: type " << to_string(type) << "message: " << pCallbackData->pMessage << std::endl;
     }
 
     void cleanup() {
